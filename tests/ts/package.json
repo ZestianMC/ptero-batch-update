@@ -1,0 +1,16 @@
+{
+  "name": "batchupdate-ts-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx --test runBatch.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^16.14.60",
+    "react": "^16.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
