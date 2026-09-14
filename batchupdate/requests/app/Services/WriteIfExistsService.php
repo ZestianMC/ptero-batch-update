@@ -84,12 +84,12 @@ final class WriteIfExistsService
 
     private function fromDaemon(DaemonConnectionException $e): WriteResult
     {
-        // 504 is what DaemonConnectionException reports when Guzzle never got a response.
-        $status = $e->getStatusCode();
-        if ($e->getPrevious() instanceof \GuzzleHttp\Exception\ConnectException || $status === 504) {
+        $prev = $e->getPrevious();
+        $hasResponse = $prev !== null && method_exists($prev, 'getResponse') && $prev->getResponse() !== null;
+        if (!$hasResponse) {
             return WriteResult::error('daemon unreachable', 502);
         }
 
-        return WriteResult::error('daemon error: ' . $status, 502);
+        return WriteResult::error('daemon error: ' . $e->getStatusCode(), 502);
     }
 }

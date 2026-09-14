@@ -191,6 +191,18 @@ final class WriteIfExistsServiceTest extends TestCase
         self::assertSame(502, $result->httpStatus);
     }
 
+    public function testGenuine504ResponseIsDaemonError(): void
+    {
+        $this->files->onGetDirectory = fn () => [self::entry('b.yml')];
+        $this->files->onPutContent = fn () => throw self::daemonException(504);
+
+        $result = $this->service->handle($this->server, '/a/b.yml', 'x');
+
+        self::assertSame('error', $result->status);
+        self::assertSame('daemon error: 504', $result->reason);
+        self::assertSame(502, $result->httpStatus);
+    }
+
     public function testUnexpectedThrowableIsContainedAndLogged(): void
     {
         $this->files->onGetDirectory = fn () => throw new \RuntimeException('boom');
