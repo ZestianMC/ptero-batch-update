@@ -19,8 +19,8 @@ class ServerListController extends ClientApiController
         $user = $request->user();
 
         $servers = $user->root_admin
-            ? Server::query()->orderBy('name')->get()
-            : $user->accessibleServers()->orderBy('name')->get()
+            ? Server::query()->select(['id', 'uuid', 'name', 'owner_id'])->orderBy('name')->get()
+            : $user->accessibleServers()->with('subusers')->orderBy('name')->get()
                 ->filter(fn (Server $server) => $user->can(Permission::ACTION_FILE_UPDATE, $server))
                 ->values();
 
