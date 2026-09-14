@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "axios": "^1.7.0",
     "@types/react": "^16.14.60",
     "react": "^16.14.0",
     "tsx": "^4.19.0",
