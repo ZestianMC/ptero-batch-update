@@ -1,0 +1,37 @@
+info:
+  name: "Batch File Update"
+  identifier: "batchupdate"
+  description: "Push the file you just saved to the same path on many servers at once."
+  flags: ""
+  version: "0.1.0"
+  target: "beta-2026-06"
+  author: "zestian"
+  icon: ""
+  website: ""
+
+admin:
+  view: "view.blade.php"
+  controller: ""
+  css: ""
+  wrapper: ""
+
+dashboard:
+  css: ""
+  wrapper: ""
+  components: "components"
+
+data:
+  directory: ""
+  public: ""
+  console: ""
+
+requests:
+  views: ""
+  app: "requests/app"
+  routers:
+    application: ""
+    client: "requests/routers/client.php"
+    web: ""
+
+database:
+  migrations: ""

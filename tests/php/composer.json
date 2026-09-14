@@ -1,0 +1,18 @@
+{
+  "name": "zestian/batchupdate-tests",
+  "type": "project",
+  "require-dev": {
+    "phpunit/phpunit": "^10.5",
+    "guzzlehttp/guzzle": "^7.8",
+    "psr/log": "^3.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Pterodactyl\\BlueprintFramework\\Extensions\\batchupdate\\": "../../batchupdate/requests/app/",
+      "Pterodactyl\\": "stubs/Pterodactyl/"
+    }
+  },
+  "config": {
+    "platform": { "php": "8.2" }
+  }
+}
