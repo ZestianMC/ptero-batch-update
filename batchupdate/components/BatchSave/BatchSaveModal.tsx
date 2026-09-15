@@ -25,6 +25,7 @@ export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed 
     const [listError, setListError] = useState<string | null>(null);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const mounted = useRef(true);
+    const content = useRef('');
 
     useEffect(() => {
         mounted.current = true;
@@ -58,13 +59,24 @@ export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed 
 
     const targets = useMemo(() => servers.filter((s) => selected.has(s.uuid)), [servers, selected]);
 
+    const run = async (list: TargetServer[]) => {
+        setPhase('running');
+        setResults((prev) => ({ ...prev, ...Object.fromEntries(list.map((t) => [t.uuid, { status: 'pending' as const }])) }));
+        await runBatch(
+            list,
+            (t) => writeIfExists(t, path, content.current),
+            (uuid, state) => setResults((prev) => ({ ...prev, [uuid]: state })),
+            5,
+        );
+        if (mounted.current) setPhase('done');
+    };
+
     const submit = async () => {
         if (phase !== 'pick' || targets.length === 0) return;
         setSubmitError(null);
         setPhase('reading');
-        let content: string;
         try {
-            content = await getFileContents(sourceUuid, path);
+            content.current = await getFileContents(sourceUuid, path);
         } catch (err) {
             if (!mounted.current) return;
             setSubmitError(`Could not read the saved file: ${httpErrorToHuman(err)}`);
@@ -72,16 +84,11 @@ export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed 
             return;
         }
         if (!mounted.current) return;
-        setPhase('running');
-        setResults(Object.fromEntries(targets.map((t) => [t.uuid, { status: 'pending' as const }])));
-        await runBatch(
-            targets,
-            (t) => writeIfExists(t, path, content),
-            (uuid, state) => setResults((prev) => ({ ...prev, [uuid]: state })),
-            5,
-        );
-        if (mounted.current) setPhase('done');
+        setResults({});
+        await run(targets);
     };
+
+    const failed = useMemo(() => targets.filter((t) => results[t.uuid]?.status === 'error'), [targets, results]);
 
     const busy = phase === 'reading' || phase === 'running';
 
@@ -125,6 +132,11 @@ export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed 
                 <>
                     <ResultsList servers={targets} results={results} done={phase === 'done'} />
                     <div css={tw`flex justify-end mt-4`}>
+                        {phase === 'done' && failed.length > 0 && (
+                            <Button isSecondary onClick={() => run(failed)} css={tw`mr-2`}>
+                                Retry failed ({failed.length})
+                            </Button>
+                        )}
                         <Button onClick={onDismissed} disabled={phase === 'running'}>
                             Close
                         </Button>

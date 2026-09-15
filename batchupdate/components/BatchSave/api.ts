@@ -47,6 +47,11 @@ export async function writeIfExists(target: TargetServer, path: string, content:
         if (isWriteResponse(body)) {
             return fromBody(body);
         }
+        // A 5xx without our JSON body never reached PHP: nginx/Cloudflare rejected it (PHP-FPM
+        // busy or down). The write was not attempted, so it is safe to retry.
+        if ([502, 503, 504].includes(err.response.status)) {
+            return { status: 'error', reason: `panel gateway error (${err.response.status}) — retry` };
+        }
         return { status: 'error', reason: httpErrorToHuman(err) };
     }
 }
