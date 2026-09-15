@@ -1,6 +1,7 @@
 import axios from 'axios';
 import http, { httpErrorToHuman } from '@/api/http';
 import getFileUploadUrl from '@/api/server/files/getFileUploadUrl';
+import panelCreateDirectory from '@/api/server/files/createDirectory';
 import type { Permission, TargetServer, TerminalState, WriteResponse } from './types';
 
 export const BASE = '/api/client/extensions/batchupdate';
@@ -64,6 +65,26 @@ export async function writeIfExists(target: TargetServer, path: string, content:
 }
 
 type ExistsResponse = { status: 'ok'; exists: boolean; directory: boolean } | { status: 'error'; reason: string };
+type PathKind = 'directory' | 'file' | 'missing';
+
+/** Resolves what sits at `path` on `target`, or a terminal error state. */
+async function pathKind(target: TargetServer, path: string): Promise<PathKind | TerminalState> {
+    let exists: ExistsResponse;
+    try {
+        exists = (await http.get(`${BASE}/servers/${target.uuid}/exists`, { params: { path } })).data;
+    } catch (err) {
+        return fromError(err);
+    }
+    if (exists.status !== 'ok') {
+        return { status: 'error', reason: exists.reason };
+    }
+    return !exists.exists ? 'missing' : exists.directory ? 'directory' : 'file';
+}
+
+const isState = (v: PathKind | TerminalState): v is TerminalState => typeof v !== 'string';
+
+/** Joins a directory and a name without doubling slashes. */
+export const joinPath = (dir: string, leaf: string): string => dir.replace(/\/+$/, '') + '/' + leaf;
 
 /**
  * Uploads `files` into `directory` on `target`, the same way the panel's Upload button does:
@@ -71,16 +92,9 @@ type ExistsResponse = { status: 'ok'; exists: boolean; directory: boolean } | { 
  * straight to Wings with a panel-signed URL. Never rejects.
  */
 export async function uploadFiles(target: TargetServer, directory: string, files: File[]): Promise<TerminalState> {
-    let exists: ExistsResponse;
-    try {
-        exists = (await http.get(`${BASE}/servers/${target.uuid}/exists`, { params: { path: directory } })).data;
-    } catch (err) {
-        return fromError(err);
-    }
-    if (exists.status !== 'ok') {
-        return { status: 'error', reason: exists.reason };
-    }
-    if (!exists.exists || !exists.directory) {
+    const kind = await pathKind(target, directory);
+    if (isState(kind)) return kind;
+    if (kind !== 'directory') {
         return { status: 'skipped', reason: 'directory not found' };
     }
 
@@ -105,5 +119,30 @@ export async function uploadFiles(target: TargetServer, directory: string, files
         }
         const wingsError = typeof err.response.data?.error === 'string' ? err.response.data.error : null;
         return { status: 'error', reason: wingsError ?? `daemon error: ${err.response.status}` };
+    }
+}
+
+/**
+ * Creates `parent`/`name` on `target` via the panel's own create-folder endpoint.
+ * Parent missing → skipped; already there → skipped. Never rejects.
+ */
+export async function createDirectory(target: TargetServer, parent: string, name: string): Promise<TerminalState> {
+    const parentKind = await pathKind(target, parent);
+    if (isState(parentKind)) return parentKind;
+    if (parentKind !== 'directory') {
+        return { status: 'skipped', reason: 'parent directory not found' };
+    }
+
+    const leafKind = await pathKind(target, joinPath(parent, name));
+    if (isState(leafKind)) return leafKind;
+    if (leafKind !== 'missing') {
+        return { status: 'skipped', reason: 'already exists' };
+    }
+
+    try {
+        await panelCreateDirectory(target.uuid, parent, name);
+        return { status: 'ok' };
+    } catch (err) {
+        return fromError(err);
     }
 }

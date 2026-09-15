@@ -8,6 +8,8 @@ Adds two buttons to the Pterodactyl file manager:
 - **Batch upload** (next to Upload in the file list): uploads the chosen file(s) into
   the open directory on every server you select. Servers without that directory are
   skipped; existing files with the same name are overwritten.
+- **Batch new folder** (same row): creates a folder inside the open directory on every
+  server you select. Servers without that directory, or where it already exists, are skipped.
 
 ## Install
 
