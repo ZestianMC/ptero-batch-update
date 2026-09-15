@@ -32,6 +32,13 @@ Packages committed files only (via `git archive`) — commit your changes first.
     # on the panel host:
     mv batchupdate.blueprint /var/www/pterodactyl/ && cd /var/www/pterodactyl && blueprint -install batchupdate
 
+## Deploy from git (panel host)
+
+    git clone https://github.com/ZestianMC/ptero-batch-update /opt/ptero-batch-update
+    bash /opt/ptero-batch-update/scripts/deploy.sh          # panel root defaults to /var/www/pterodactyl
+
+Re-run the same `deploy.sh` line for every update: it pulls, packages, and runs `blueprint -install`.
+
 ## Manual smoke test
 
 1. Servers A and B have `/plugins/zCosmetics/cosmetics/balloons.yml`; server C does not.
