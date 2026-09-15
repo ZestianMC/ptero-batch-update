@@ -5,10 +5,10 @@ Adds two buttons to the Pterodactyl file manager:
 - **Batch save** (below the file editor): pushes the last *saved* version of the open
   file to the same path on every server you select. Servers where the file does not
   exist are skipped and reported.
-- **Batch upload** (next to Upload in the file list): uploads the chosen file(s) into
+- **Batch operations** → **Upload files** (button next to Upload in the file list): uploads the chosen file(s) into
   the open directory on every server you select. Servers without that directory are
   skipped; existing files with the same name are overwritten.
-- **Batch new folder** (same row): creates a folder inside the open directory on every
+- **Batch operations** → **New folder**: creates a folder inside the open directory on every
   server you select. Servers without that directory, or where it already exists, are skipped.
 
 ## Install
@@ -22,7 +22,7 @@ Adds two buttons to the Pterodactyl file manager:
 Batch save: open a file in the editor, click **Save**, then **Batch save…**, pick targets,
 click **Save to N servers**. Needs `file.update` on each target.
 
-Batch upload: open the destination directory, click **Batch upload…**, choose files, pick
+Batch upload: open the destination directory, click **Batch operations…** → **Upload files…**, choose files, pick
 targets, click **Upload to N servers**. Needs `file.create` on each target. Bytes go from the
 browser straight to each server's Wings (same mechanism as the panel's Upload button).
 

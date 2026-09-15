@@ -4,10 +4,10 @@ Blueprint extension for Pterodactyl: push a saved file, or upload files, to many
 
 - **Batch save** — open any file in the panel's file editor, click **Save**, then **Batch save…**,
   pick the target servers and confirm. The file must already exist on each target.
-- **Batch upload** — in the file manager, click **Batch upload…** next to Upload, choose one or
+- **Batch upload** — in the file manager, click **Batch operations…** next to Upload, pick **Upload files**, choose one or
   more files, pick targets and confirm. Files land in the directory you have open; targets
   without that directory are skipped, existing files with the same name are overwritten.
-- **Batch new folder** — in the file manager, click **Batch new folder…**, type a name, pick
+- **Batch new folder** — in the file manager, click **Batch operations…** → **New folder**, type a name, pick
   targets and confirm. The folder is created inside the directory you have open; targets
   without that directory, or where the folder already exists, are skipped.
 
@@ -74,14 +74,14 @@ Batch save (needs `file.update` on each target):
 Batch upload (needs `file.create` on each target):
 
 1. Open a server → **Files** → navigate into the directory the files should go to.
-2. Click **Batch upload…**, choose the file(s).
+2. Click **Batch operations…** → **Upload files…**, choose the file(s).
 3. Select target servers and click **Upload to N servers**. Bytes go from your browser straight
    to each server's Wings, exactly like the panel's own Upload button, so large files are fine.
 
 Batch new folder (needs `file.create` on each target):
 
 1. Open a server → **Files** → navigate into the parent directory.
-2. Click **Batch new folder…**, type the folder name, select targets, click **Create on N servers**.
+2. Click **Batch operations…** → **New folder…**, type the folder name, select targets, click **Create on N servers**.
 
 Only servers you hold the needed permission on are listed; root admins see every server.
 Batch saves are logged in the panel log as `batchupdate.write` with user id, server uuid, path
