@@ -59,38 +59,75 @@ final class WriteIfExistsService
         }
     }
 
-    /** @throws DaemonConnectionException when Wings is unreachable or errors other than 404 */
+    /**
+     * Walks the path from "/" one segment at a time. Listing a directory that does not
+     * exist makes Wings answer 404 or, depending on version, a generic 500 that cannot be
+     * told apart from a real failure; walking down means we only ever list directories we
+     * have just seen, so a missing segment is a clean "not found" and any daemon error is
+     * a genuine one.
+     *
+     * @throws DaemonConnectionException when Wings is unreachable or fails on an existing directory
+     */
     private function regularFileExists(DaemonFileRepository $files, string $path): bool
     {
-        $dir = dirname($path);
-        $name = basename($path);
+        $segments = array_values(array_filter(explode('/', $path), fn (string $s) => $s !== ''));
+        $last = count($segments) - 1;
+        $dir = '/';
 
+        foreach ($segments as $i => $segment) {
+            $entry = $this->findEntry($files, $dir, $segment);
+            if ($entry === null) {
+                return false;
+            }
+
+            if ($i === $last) {
+                return (bool) ($entry['file'] ?? false) && !($entry['directory'] ?? false) && !($entry['symlink'] ?? false);
+            }
+
+            if (!($entry['directory'] ?? false) && !($entry['symlink'] ?? false)) {
+                return false;
+            }
+
+            $dir = rtrim($dir, '/') . '/' . $segment;
+        }
+
+        return false;
+    }
+
+    /** @throws DaemonConnectionException */
+    private function findEntry(DaemonFileRepository $files, string $dir, string $name): ?array
+    {
         try {
-            $entries = $files->getDirectory($dir === '' || $dir === '.' ? '/' : $dir);
+            $entries = $files->getDirectory($dir);
         } catch (DaemonConnectionException $e) {
             if ($e->getStatusCode() === 404) {
-                return false;
+                return null;
             }
             throw $e;
         }
 
         foreach ($entries as $entry) {
             if (($entry['name'] ?? null) === $name) {
-                return (bool) ($entry['file'] ?? false) && !($entry['directory'] ?? false) && !($entry['symlink'] ?? false);
+                return $entry;
             }
         }
 
-        return false;
+        return null;
     }
 
+    /**
+     * Daemon failures are reported with HTTP 200: the request to the panel succeeded, the
+     * target did not. Cloudflare (and some proxies) replace origin 502/504 responses with
+     * their own error page, which would hide the JSON body from the browser.
+     */
     private function fromDaemon(DaemonConnectionException $e): WriteResult
     {
         $prev = $e->getPrevious();
         $hasResponse = $prev !== null && method_exists($prev, 'getResponse') && $prev->getResponse() !== null;
         if (!$hasResponse) {
-            return WriteResult::error('daemon unreachable', 502);
+            return WriteResult::error('daemon unreachable', 200);
         }
 
-        return WriteResult::error('daemon error: ' . $e->getStatusCode(), 502);
+        return WriteResult::error('daemon error: ' . $e->getStatusCode(), 200);
     }
 }

@@ -26,19 +26,33 @@ final class SpyLogger extends AbstractLogger
     }
 }
 
-/** Scriptable repository: each test sets what getDirectory / putContent do. */
+/**
+ * Fake Wings filesystem. `$tree` maps a directory path to its entries; listing a directory
+ * that is not in the tree throws the same 404 the real daemon does. Tests may still override
+ * `onGetDirectory` / `onPutContent` to script failures.
+ */
 final class FakeFiles extends DaemonFileRepository
 {
+    /** @var array<string, list<array>> */
+    public array $tree = [];
     /** @var \Closure(string): array */
     public \Closure $onGetDirectory;
     /** @var \Closure(string, string): Response */
     public \Closure $onPutContent;
+    /** @var list<string> */
+    public array $listedDirs = [];
     public array $putCalls = [];
     public ?Server $lastServer = null;
 
     public function __construct()
     {
-        $this->onGetDirectory = fn (string $p) => [];
+        $this->onGetDirectory = function (string $dir): array {
+            if (!array_key_exists($dir, $this->tree)) {
+                throw WriteIfExistsServiceTest::daemonException(404);
+            }
+
+            return $this->tree[$dir];
+        };
         $this->onPutContent = fn (string $p, string $c) => new Response(204);
     }
 
@@ -51,6 +65,8 @@ final class FakeFiles extends DaemonFileRepository
 
     public function getDirectory(string $path): array
     {
+        $this->listedDirs[] = $path;
+
         return ($this->onGetDirectory)($path);
     }
 
@@ -64,6 +80,8 @@ final class FakeFiles extends DaemonFileRepository
 
 final class WriteIfExistsServiceTest extends TestCase
 {
+    private const PATH = '/plugins/zCosmetics/cosmetics/balloons.yml';
+
     private FakeFiles $files;
     private SpyLogger $log;
     private WriteIfExistsService $service;
@@ -82,7 +100,23 @@ final class WriteIfExistsServiceTest extends TestCase
         return ['name' => $name, 'file' => $file, 'directory' => $directory, 'symlink' => $symlink, 'size' => 1];
     }
 
-    private static function daemonException(?int $status): DaemonConnectionException
+    private static function dir(string $name): array
+    {
+        return self::entry($name, file: false, directory: true);
+    }
+
+    /** A Minecraft-like server that has the target file. */
+    private function fullTree(): void
+    {
+        $this->files->tree = [
+            '/' => [self::dir('plugins'), self::entry('server.properties')],
+            '/plugins' => [self::dir('zCosmetics'), self::entry('zCosmetics.jar')],
+            '/plugins/zCosmetics' => [self::dir('cosmetics'), self::entry('config.yml')],
+            '/plugins/zCosmetics/cosmetics' => [self::entry('balloons.yml'), self::entry('hats.yml')],
+        ];
+    }
+
+    public static function daemonException(?int $status): DaemonConnectionException
     {
         $req = new Request('GET', 'http://wings');
         $prev = $status === null
@@ -94,40 +128,43 @@ final class WriteIfExistsServiceTest extends TestCase
 
     public function testWritesWhenFileExists(): void
     {
-        $this->files->onGetDirectory = fn (string $dir) => $dir === '/plugins/zCosmetics/cosmetics'
-            ? [self::entry('balloons.yml'), self::entry('hats.yml')]
-            : self::fail("unexpected dir $dir");
+        $this->fullTree();
 
-        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', "a: 1\n", 42);
+        $result = $this->service->handle($this->server, self::PATH, "a: 1\n", 42);
 
         self::assertSame('ok', $result->status);
         self::assertSame(200, $result->httpStatus);
         self::assertNull($result->reason);
-        self::assertSame([['/plugins/zCosmetics/cosmetics/balloons.yml', "a: 1\n"]], $this->files->putCalls);
+        self::assertSame([[self::PATH, "a: 1\n"]], $this->files->putCalls);
         self::assertSame($this->server, $this->files->lastServer);
         self::assertSame(['status' => 'ok'], $result->toArray());
     }
 
+    public function testWalksEveryDirectoryFromRoot(): void
+    {
+        $this->fullTree();
+
+        $this->service->handle($this->server, self::PATH, 'x', 42);
+
+        self::assertSame(['/', '/plugins', '/plugins/zCosmetics', '/plugins/zCosmetics/cosmetics'], $this->files->listedDirs);
+    }
+
     public function testRootLevelFileUsesRootDirectory(): void
     {
-        $seen = null;
-        $this->files->onGetDirectory = function (string $dir) use (&$seen) {
-            $seen = $dir;
-
-            return [self::entry('server.properties')];
-        };
+        $this->files->tree = ['/' => [self::entry('server.properties')]];
 
         $result = $this->service->handle($this->server, '/server.properties', 'x', 42);
 
-        self::assertSame('/', $seen);
+        self::assertSame(['/'], $this->files->listedDirs);
         self::assertSame('ok', $result->status);
     }
 
     public function testSkipsWhenNameAbsent(): void
     {
-        $this->files->onGetDirectory = fn () => [self::entry('hats.yml')];
+        $this->fullTree();
+        $this->files->tree['/plugins/zCosmetics/cosmetics'] = [self::entry('hats.yml')];
 
-        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', 'x', 42);
+        $result = $this->service->handle($this->server, self::PATH, 'x', 42);
 
         self::assertSame('skipped', $result->status);
         self::assertSame('file not found', $result->reason);
@@ -138,9 +175,10 @@ final class WriteIfExistsServiceTest extends TestCase
 
     public function testSkipsWhenNameIsADirectory(): void
     {
-        $this->files->onGetDirectory = fn () => [self::entry('balloons.yml', file: false, directory: true)];
+        $this->fullTree();
+        $this->files->tree['/plugins/zCosmetics/cosmetics'] = [self::dir('balloons.yml')];
 
-        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', 'x', 42);
+        $result = $this->service->handle($this->server, self::PATH, 'x', 42);
 
         self::assertSame('skipped', $result->status);
         self::assertSame([], $this->files->putCalls);
@@ -148,16 +186,50 @@ final class WriteIfExistsServiceTest extends TestCase
 
     public function testSkipsWhenNameIsASymlink(): void
     {
-        $this->files->onGetDirectory = fn () => [self::entry('balloons.yml', symlink: true)];
+        $this->fullTree();
+        $this->files->tree['/plugins/zCosmetics/cosmetics'] = [self::entry('balloons.yml', symlink: true)];
 
-        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', 'x', 42);
+        $result = $this->service->handle($this->server, self::PATH, 'x', 42);
 
         self::assertSame('skipped', $result->status);
         self::assertSame('file not found', $result->reason);
         self::assertSame([], $this->files->putCalls);
     }
 
-    public function testSkipsWhenDirectoryMissingOnWings(): void
+    /** A Discord bot / proxy server: no /plugins at all. Must never list a missing directory. */
+    public function testSkipsWhenIntermediateDirectoryIsMissingWithoutListingIt(): void
+    {
+        $this->files->tree = ['/' => [self::entry('bot.js'), self::dir('node_modules')]];
+
+        $result = $this->service->handle($this->server, self::PATH, 'x', 42);
+
+        self::assertSame('skipped', $result->status);
+        self::assertSame('file not found', $result->reason);
+        self::assertSame(['/'], $this->files->listedDirs);
+        self::assertSame([], $this->files->putCalls);
+    }
+
+    public function testSkipsWhenIntermediateSegmentIsAFile(): void
+    {
+        $this->files->tree = ['/' => [self::entry('plugins')]];
+
+        $result = $this->service->handle($this->server, self::PATH, 'x', 42);
+
+        self::assertSame('skipped', $result->status);
+        self::assertSame(['/'], $this->files->listedDirs);
+    }
+
+    public function testFollowsSymlinkedIntermediateDirectory(): void
+    {
+        $this->fullTree();
+        $this->files->tree['/'] = [self::entry('plugins', file: false, symlink: true)];
+
+        $result = $this->service->handle($this->server, self::PATH, 'x', 42);
+
+        self::assertSame('ok', $result->status);
+    }
+
+    public function testSkipsWhenWingsAnswers404ForADirectory(): void
     {
         $this->files->onGetDirectory = fn () => throw self::daemonException(404);
 
@@ -176,42 +248,53 @@ final class WriteIfExistsServiceTest extends TestCase
 
         self::assertSame('error', $result->status);
         self::assertSame('daemon unreachable', $result->reason);
-        self::assertSame(502, $result->httpStatus);
+        self::assertSame(200, $result->httpStatus);
     }
 
-    public function testDaemonErrorOnWrite(): void
+    public function testDaemonErrorOnExistingDirectoryIsReported(): void
     {
-        $this->files->onGetDirectory = fn () => [self::entry('b.yml')];
-        $this->files->onPutContent = fn () => throw self::daemonException(500);
+        $this->files->onGetDirectory = fn () => throw self::daemonException(500);
 
         $result = $this->service->handle($this->server, '/a/b.yml', 'x', 42);
 
         self::assertSame('error', $result->status);
         self::assertSame('daemon error: 500', $result->reason);
-        self::assertSame(502, $result->httpStatus);
+        self::assertSame(200, $result->httpStatus);
+    }
+
+    public function testDaemonErrorOnWrite(): void
+    {
+        $this->fullTree();
+        $this->files->onPutContent = fn () => throw self::daemonException(500);
+
+        $result = $this->service->handle($this->server, self::PATH, 'x', 42);
+
+        self::assertSame('error', $result->status);
+        self::assertSame('daemon error: 500', $result->reason);
+        self::assertSame(200, $result->httpStatus);
     }
 
     public function testDaemonUnreachableOnWrite(): void
     {
-        $this->files->onGetDirectory = fn () => [self::entry('b.yml')];
+        $this->fullTree();
         $this->files->onPutContent = fn () => throw self::daemonException(null);
 
-        $result = $this->service->handle($this->server, '/a/b.yml', 'x', 42);
+        $result = $this->service->handle($this->server, self::PATH, 'x', 42);
 
         self::assertSame('daemon unreachable', $result->reason);
-        self::assertSame(502, $result->httpStatus);
+        self::assertSame(200, $result->httpStatus);
     }
 
     public function testGenuine504ResponseIsDaemonError(): void
     {
-        $this->files->onGetDirectory = fn () => [self::entry('b.yml')];
+        $this->fullTree();
         $this->files->onPutContent = fn () => throw self::daemonException(504);
 
-        $result = $this->service->handle($this->server, '/a/b.yml', 'x', 42);
+        $result = $this->service->handle($this->server, self::PATH, 'x', 42);
 
         self::assertSame('error', $result->status);
         self::assertSame('daemon error: 504', $result->reason);
-        self::assertSame(502, $result->httpStatus);
+        self::assertSame(200, $result->httpStatus);
     }
 
     public function testUnexpectedThrowableIsContainedAndLogged(): void
@@ -236,11 +319,11 @@ final class WriteIfExistsServiceTest extends TestCase
 
     public function testEveryOutcomeIsLoggedWithStatus(): void
     {
-        $this->files->onGetDirectory = fn () => [self::entry('b.yml')];
-        $this->service->handle($this->server, '/a/b.yml', 'x', 42);
+        $this->fullTree();
+        $this->service->handle($this->server, self::PATH, 'x', 42);
 
-        $this->files->onGetDirectory = fn () => [];
-        $this->service->handle($this->server, '/a/b.yml', 'x', 42);
+        $this->files->tree['/plugins/zCosmetics/cosmetics'] = [];
+        $this->service->handle($this->server, self::PATH, 'x', 42);
 
         $statuses = array_map(fn ($r) => [$r[0], $r[2]['status'] ?? null], $this->log->records);
         self::assertContains(['info', 'ok'], $statuses);
