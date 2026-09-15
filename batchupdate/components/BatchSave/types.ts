@@ -16,3 +16,6 @@ export interface WriteResponse {
     status: 'ok' | 'skipped' | 'error';
     reason?: string;
 }
+
+/** Server permission a batch action needs on each target; also filters the target list. */
+export type Permission = 'file.update' | 'file.create';

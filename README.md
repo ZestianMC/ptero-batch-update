@@ -1,10 +1,15 @@
 # ptero-batch-update
 
-Blueprint extension for Pterodactyl: push a saved file to the same path on many servers.
+Blueprint extension for Pterodactyl: push a saved file, or upload files, to many servers at once.
 
-Open any file in the panel's file editor, click **Save**, then **Batch save…**, pick the
-target servers and confirm. Each target reports `Saved`, `Skipped: file not found`
-(the file must already exist on the target) or an error with its reason.
+- **Batch save** — open any file in the panel's file editor, click **Save**, then **Batch save…**,
+  pick the target servers and confirm. The file must already exist on each target.
+- **Batch upload** — in the file manager, click **Batch upload…** next to Upload, choose one or
+  more files, pick targets and confirm. Files land in the directory you have open; targets
+  without that directory are skipped, existing files with the same name are overwritten.
+
+Each target reports `Saved`, `Skipped: <reason>` or `Error: <reason>`, and failed targets can be
+retried from the results view.
 
 The panel's client API rate limit (240 requests/min per user by default) caps a single
 batch at roughly 240 servers; larger fleets should be done in chunks.
@@ -56,12 +61,23 @@ It pulls the latest commit, packages it and re-runs `blueprint -install batchupd
 
 ## Use
 
+Batch save (needs `file.update` on each target):
+
 1. Open a server → **Files** → open the file you want to distribute.
 2. Edit and click **Save** (the batch uses the last saved version).
 3. Click **Batch save…** below the save button.
-4. Search / select target servers (only servers you may write files on are listed) and click **Save to N servers**.
-5. Read the per-server results. Writes are logged in the panel log as `batchupdate.write`
-   with user id, server uuid, path and status.
+4. Search / select target servers and click **Save to N servers**.
+
+Batch upload (needs `file.create` on each target):
+
+1. Open a server → **Files** → navigate into the directory the files should go to.
+2. Click **Batch upload…**, choose the file(s).
+3. Select target servers and click **Upload to N servers**. Bytes go from your browser straight
+   to each server's Wings, exactly like the panel's own Upload button, so large files are fine.
+
+Only servers you hold the needed permission on are listed; root admins see every server.
+Batch saves are logged in the panel log as `batchupdate.write` with user id, server uuid, path
+and status. Uploads are logged by Wings like any other upload.
 
 ## Development
 

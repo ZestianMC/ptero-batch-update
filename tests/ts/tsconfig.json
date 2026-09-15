@@ -12,7 +12,8 @@
     "paths": {
       "@/*": ["stubs/panel/*"],
       "@blueprint/*": ["stubs/blueprint/*"],
-      "react": ["node_modules/@types/react"]
+      "react": ["node_modules/@types/react"],
+      "axios": ["node_modules/axios"]
     },
     "types": ["node", "react"]
   },

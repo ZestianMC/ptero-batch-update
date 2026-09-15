@@ -10,18 +10,25 @@ use Pterodactyl\Http\Controllers\Api\Client\ClientApiController;
 
 class ServerListController extends ClientApiController
 {
+    /** Permissions a caller may filter by; anything else falls back to file.update. */
+    private const ALLOWED = [Permission::ACTION_FILE_UPDATE, Permission::ACTION_FILE_CREATE];
+
     /**
-     * GET /servers — every server the user may write files on.
-     * Root admins see the whole panel; others see accessible servers with file.update.
+     * GET /servers?permission=file.update|file.create — every server the user holds that
+     * permission on. Root admins see the whole panel.
      */
     public function __invoke(ClientApiRequest $request): JsonResponse
     {
         $user = $request->user();
+        $permission = $request->query('permission');
+        if (!in_array($permission, self::ALLOWED, true)) {
+            $permission = Permission::ACTION_FILE_UPDATE;
+        }
 
         $servers = $user->root_admin
             ? Server::query()->select(['id', 'uuid', 'name', 'owner_id'])->orderBy('name')->get()
             : $user->accessibleServers()->with('subusers')->orderBy('name')->get()
-                ->filter(fn (Server $server) => $user->can(Permission::ACTION_FILE_UPDATE, $server))
+                ->filter(fn (Server $server) => $user->can($permission, $server))
                 ->values();
 
         return new JsonResponse([

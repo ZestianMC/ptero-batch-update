@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Pterodactyl\Http\Middleware\Api\Client\Server\AuthenticateServerAccess;
+use Pterodactyl\BlueprintFramework\Extensions\batchupdate\Http\Controllers\PathExistsController;
 use Pterodactyl\BlueprintFramework\Extensions\batchupdate\Http\Controllers\ServerListController;
 use Pterodactyl\BlueprintFramework\Extensions\batchupdate\Http\Controllers\WriteIfExistsController;
 
@@ -13,5 +14,6 @@ Route::get('/servers', ServerListController::class);
 Route::prefix('/servers/{server}')
     ->middleware([AuthenticateServerAccess::class])
     ->group(function () {
+        Route::get('/exists', PathExistsController::class);
         Route::post('/write-if-exists', WriteIfExistsController::class);
     });

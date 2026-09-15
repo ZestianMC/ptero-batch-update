@@ -1,5 +1,7 @@
 # https://blueprint.zip/docs/configs/componentsyml
 Server:
   Files:
+    Browse:
+      FileButtons: "BatchSave/FileButtons"
     Edit:
       AfterEdit: "BatchSave/AfterEdit"
