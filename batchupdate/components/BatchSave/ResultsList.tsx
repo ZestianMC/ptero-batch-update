@@ -9,7 +9,10 @@ interface Props {
     done: boolean;
 }
 
-const Row = ({ name, state }: { name: string; state: TargetState }) => {
+// Blueprint's installer rewrites placeholder tokens (extension name, identifier, version, ...)
+// written as a single word in curly braces, so never render a bare JSX expression like the
+// server name directly; go through the object instead. See tests/ts/placeholders.test.ts.
+const Row = ({ server, state }: { server: TargetServer; state: TargetState }) => {
     const label =
         state.status === 'pending' ? null :
         state.status === 'ok' ? <span css={tw`text-green-400`}>✓ Saved</span> :
@@ -18,7 +21,7 @@ const Row = ({ name, state }: { name: string; state: TargetState }) => {
 
     return (
         <li css={tw`flex items-center justify-between px-3 py-2 text-sm border-b border-neutral-700 last:border-b-0`}>
-            <span css={tw`truncate mr-4`}>{name}</span>
+            <span css={tw`truncate mr-4`}>{server.name}</span>
             <span css={tw`flex-shrink-0`}>{state.status === 'pending' ? <Spinner size={'small'} /> : label}</span>
         </li>
     );
@@ -54,7 +57,7 @@ export default function ResultsList({ servers, results, done }: Props) {
             )}
             <ul css={tw`max-h-64 overflow-y-auto border border-neutral-700 rounded`}>
                 {servers.map((s) => (
-                    <Row key={s.uuid} name={s.name} state={results[s.uuid] ?? { status: 'pending' }} />
+                    <Row key={s.uuid} server={s} state={results[s.uuid] ?? { status: 'pending' }} />
                 ))}
             </ul>
         </div>
