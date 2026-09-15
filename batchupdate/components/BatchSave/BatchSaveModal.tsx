@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import tw from 'twin.macro';
 import Modal, { RequiredModalProps } from '@/components/elements/Modal';
 import Button from '@/components/elements/Button';
@@ -15,25 +15,33 @@ interface Props extends RequiredModalProps {
     path: string;
 }
 
-type Phase = 'loading' | 'pick' | 'running' | 'done';
+type Phase = 'loading' | 'pick' | 'reading' | 'running' | 'done';
 
 export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed }: Props) {
     const [phase, setPhase] = useState<Phase>('loading');
     const [servers, setServers] = useState<TargetServer[]>([]);
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [results, setResults] = useState<Record<string, TargetState>>({});
-    const [error, setError] = useState<string | null>(null);
+    const [listError, setListError] = useState<string | null>(null);
+    const [submitError, setSubmitError] = useState<string | null>(null);
+    const mounted = useRef(true);
+
+    useEffect(() => () => {
+        mounted.current = false;
+    }, []);
 
     const load = () => {
         setPhase('loading');
-        setError(null);
+        setListError(null);
         listTargetServers()
             .then((list) => {
+                if (!mounted.current) return;
                 setServers(list.filter((s) => s.uuid !== sourceUuid));
                 setPhase('pick');
             })
             .catch((err) => {
-                setError(httpErrorToHuman(err));
+                if (!mounted.current) return;
+                setListError(httpErrorToHuman(err));
                 setPhase('pick');
             });
     };
@@ -48,15 +56,19 @@ export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed 
     const targets = useMemo(() => servers.filter((s) => selected.has(s.uuid)), [servers, selected]);
 
     const submit = async () => {
-        setError(null);
+        if (phase !== 'pick' || targets.length === 0) return;
+        setSubmitError(null);
+        setPhase('reading');
         let content: string;
         try {
             content = await getFileContents(sourceUuid, path);
         } catch (err) {
-            setError(`Could not read the saved file: ${httpErrorToHuman(err)}`);
+            if (!mounted.current) return;
+            setSubmitError(`Could not read the saved file: ${httpErrorToHuman(err)}`);
+            setPhase('pick');
             return;
         }
-
+        if (!mounted.current) return;
         setPhase('running');
         setResults(Object.fromEntries(targets.map((t) => [t.uuid, { status: 'pending' as const }])));
         await runBatch(
@@ -65,10 +77,10 @@ export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed 
             (uuid, state) => setResults((prev) => ({ ...prev, [uuid]: state })),
             5,
         );
-        setPhase('done');
+        if (mounted.current) setPhase('done');
     };
 
-    const busy = phase === 'loading' || phase === 'running';
+    const busy = phase === 'loading' || phase === 'reading' || phase === 'running';
 
     return (
         <Modal visible={visible} onDismissed={onDismissed} dismissable={!busy} closeOnBackground={!busy} closeOnEscape={!busy}>
@@ -78,18 +90,20 @@ export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed 
                 Save first if you have unsaved changes. Servers without this file are skipped.
             </p>
 
-            {error && <p css={tw`mb-3 p-3 rounded bg-red-900 text-red-200 text-sm`}>{error}</p>}
-
             {phase === 'loading' && <p css={tw`text-sm text-neutral-400`}>Loading servers…</p>}
+
+            {phase === 'reading' && <p css={tw`text-sm text-neutral-400`}>Reading saved file…</p>}
 
             {phase === 'pick' && (
                 <>
-                    {servers.length === 0 && !error && (
+                    {listError && <p css={tw`mb-3 p-3 rounded bg-red-900 text-red-200 text-sm`}>{listError}</p>}
+                    {submitError && <p css={tw`mb-3 p-3 rounded bg-red-900 text-red-200 text-sm`}>{submitError}</p>}
+                    {servers.length === 0 && !listError && (
                         <p css={tw`text-sm text-neutral-400`}>No other servers you can write files on.</p>
                     )}
                     {servers.length > 0 && <ServerPicker servers={servers} selected={selected} onChange={setSelected} />}
                     <div css={tw`flex justify-end mt-4`}>
-                        {error && (
+                        {listError && (
                             <Button isSecondary onClick={load} css={tw`mr-2`}>
                                 Retry
                             </Button>
