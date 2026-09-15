@@ -4,7 +4,6 @@ Blueprint extension for Pterodactyl: push a saved file to the same path on many 
 The panel's client API rate limit (240 requests/min per user by default) caps a single batch at roughly 240 servers; larger fleets should be done in chunks.
 
 - Extension source: `batchupdate/` (see its README for install/use)
-- Design: `docs/superpowers/specs/2026-09-14-batch-file-update-design.md`
 
 ## Tests
 
