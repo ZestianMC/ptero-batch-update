@@ -11,7 +11,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["stubs/panel/*"],
-      "@blueprint/*": ["stubs/blueprint/*"]
+      "@blueprint/*": ["stubs/blueprint/*"],
+      "react": ["node_modules/@types/react"]
     },
     "types": ["node", "react"]
   },
