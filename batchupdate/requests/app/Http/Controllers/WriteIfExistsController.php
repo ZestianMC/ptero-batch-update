@@ -29,6 +29,7 @@ class WriteIfExistsController extends ClientApiController
             $server,
             (string) $request->query('file'),
             (string) $request->getContent(),
+            $request->user()->id,
         );
 
         return new JsonResponse($result->toArray(), $result->httpStatus);

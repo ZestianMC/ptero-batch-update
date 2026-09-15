@@ -37,6 +37,9 @@ export async function writeIfExists(target: TargetServer, path: string, content:
         if (!err?.response) {
             return { status: 'error', reason: 'network error' };
         }
+        if (err.response.status === 429) {
+            return { status: 'error', reason: 'rate limited — save to fewer servers at once' };
+        }
         if (err.response.status === 403) {
             return { status: 'error', reason: 'no permission' };
         }

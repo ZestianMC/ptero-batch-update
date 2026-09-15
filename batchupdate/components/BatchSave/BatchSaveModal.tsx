@@ -26,8 +26,11 @@ export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed 
     const [submitError, setSubmitError] = useState<string | null>(null);
     const mounted = useRef(true);
 
-    useEffect(() => () => {
-        mounted.current = false;
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+        };
     }, []);
 
     const load = () => {
@@ -80,7 +83,7 @@ export default function BatchSaveModal({ sourceUuid, path, visible, onDismissed 
         if (mounted.current) setPhase('done');
     };
 
-    const busy = phase === 'loading' || phase === 'reading' || phase === 'running';
+    const busy = phase === 'reading' || phase === 'running';
 
     return (
         <Modal visible={visible} onDismissed={onDismissed} dismissable={!busy} closeOnBackground={!busy} closeOnEscape={!busy}>

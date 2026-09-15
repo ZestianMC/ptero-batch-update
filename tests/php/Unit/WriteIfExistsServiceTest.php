@@ -77,9 +77,9 @@ final class WriteIfExistsServiceTest extends TestCase
         $this->server = new Server(uuid: 'aaaaaaaa-0000-0000-0000-000000000000', name: 'lobby');
     }
 
-    private static function entry(string $name, bool $file = true, bool $directory = false): array
+    private static function entry(string $name, bool $file = true, bool $directory = false, bool $symlink = false): array
     {
-        return ['name' => $name, 'file' => $file, 'directory' => $directory, 'symlink' => false, 'size' => 1];
+        return ['name' => $name, 'file' => $file, 'directory' => $directory, 'symlink' => $symlink, 'size' => 1];
     }
 
     private static function daemonException(?int $status): DaemonConnectionException
@@ -98,7 +98,7 @@ final class WriteIfExistsServiceTest extends TestCase
             ? [self::entry('balloons.yml'), self::entry('hats.yml')]
             : self::fail("unexpected dir $dir");
 
-        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', "a: 1\n");
+        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', "a: 1\n", 42);
 
         self::assertSame('ok', $result->status);
         self::assertSame(200, $result->httpStatus);
@@ -117,7 +117,7 @@ final class WriteIfExistsServiceTest extends TestCase
             return [self::entry('server.properties')];
         };
 
-        $result = $this->service->handle($this->server, '/server.properties', 'x');
+        $result = $this->service->handle($this->server, '/server.properties', 'x', 42);
 
         self::assertSame('/', $seen);
         self::assertSame('ok', $result->status);
@@ -127,7 +127,7 @@ final class WriteIfExistsServiceTest extends TestCase
     {
         $this->files->onGetDirectory = fn () => [self::entry('hats.yml')];
 
-        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', 'x');
+        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', 'x', 42);
 
         self::assertSame('skipped', $result->status);
         self::assertSame('file not found', $result->reason);
@@ -140,9 +140,20 @@ final class WriteIfExistsServiceTest extends TestCase
     {
         $this->files->onGetDirectory = fn () => [self::entry('balloons.yml', file: false, directory: true)];
 
-        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', 'x');
+        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', 'x', 42);
 
         self::assertSame('skipped', $result->status);
+        self::assertSame([], $this->files->putCalls);
+    }
+
+    public function testSkipsWhenNameIsASymlink(): void
+    {
+        $this->files->onGetDirectory = fn () => [self::entry('balloons.yml', symlink: true)];
+
+        $result = $this->service->handle($this->server, '/plugins/zCosmetics/cosmetics/balloons.yml', 'x', 42);
+
+        self::assertSame('skipped', $result->status);
+        self::assertSame('file not found', $result->reason);
         self::assertSame([], $this->files->putCalls);
     }
 
@@ -150,7 +161,7 @@ final class WriteIfExistsServiceTest extends TestCase
     {
         $this->files->onGetDirectory = fn () => throw self::daemonException(404);
 
-        $result = $this->service->handle($this->server, '/plugins/missing/x.yml', 'x');
+        $result = $this->service->handle($this->server, '/plugins/missing/x.yml', 'x', 42);
 
         self::assertSame('skipped', $result->status);
         self::assertSame('file not found', $result->reason);
@@ -161,7 +172,7 @@ final class WriteIfExistsServiceTest extends TestCase
     {
         $this->files->onGetDirectory = fn () => throw self::daemonException(null);
 
-        $result = $this->service->handle($this->server, '/a/b.yml', 'x');
+        $result = $this->service->handle($this->server, '/a/b.yml', 'x', 42);
 
         self::assertSame('error', $result->status);
         self::assertSame('daemon unreachable', $result->reason);
@@ -173,7 +184,7 @@ final class WriteIfExistsServiceTest extends TestCase
         $this->files->onGetDirectory = fn () => [self::entry('b.yml')];
         $this->files->onPutContent = fn () => throw self::daemonException(500);
 
-        $result = $this->service->handle($this->server, '/a/b.yml', 'x');
+        $result = $this->service->handle($this->server, '/a/b.yml', 'x', 42);
 
         self::assertSame('error', $result->status);
         self::assertSame('daemon error: 500', $result->reason);
@@ -185,7 +196,7 @@ final class WriteIfExistsServiceTest extends TestCase
         $this->files->onGetDirectory = fn () => [self::entry('b.yml')];
         $this->files->onPutContent = fn () => throw self::daemonException(null);
 
-        $result = $this->service->handle($this->server, '/a/b.yml', 'x');
+        $result = $this->service->handle($this->server, '/a/b.yml', 'x', 42);
 
         self::assertSame('daemon unreachable', $result->reason);
         self::assertSame(502, $result->httpStatus);
@@ -196,7 +207,7 @@ final class WriteIfExistsServiceTest extends TestCase
         $this->files->onGetDirectory = fn () => [self::entry('b.yml')];
         $this->files->onPutContent = fn () => throw self::daemonException(504);
 
-        $result = $this->service->handle($this->server, '/a/b.yml', 'x');
+        $result = $this->service->handle($this->server, '/a/b.yml', 'x', 42);
 
         self::assertSame('error', $result->status);
         self::assertSame('daemon error: 504', $result->reason);
@@ -207,7 +218,7 @@ final class WriteIfExistsServiceTest extends TestCase
     {
         $this->files->onGetDirectory = fn () => throw new \RuntimeException('boom');
 
-        $result = $this->service->handle($this->server, '/a/b.yml', 'x');
+        $result = $this->service->handle($this->server, '/a/b.yml', 'x', 42);
 
         self::assertSame('error', $result->status);
         self::assertSame('unexpected error', $result->reason);
@@ -220,19 +231,24 @@ final class WriteIfExistsServiceTest extends TestCase
         self::assertSame('aaaaaaaa-0000-0000-0000-000000000000', $record[2]['server_uuid']);
         self::assertSame('/a/b.yml', $record[2]['path']);
         self::assertInstanceOf(\RuntimeException::class, $record[2]['exception']);
+        self::assertSame(42, $record[2]['user_id']);
     }
 
     public function testEveryOutcomeIsLoggedWithStatus(): void
     {
         $this->files->onGetDirectory = fn () => [self::entry('b.yml')];
-        $this->service->handle($this->server, '/a/b.yml', 'x');
+        $this->service->handle($this->server, '/a/b.yml', 'x', 42);
 
         $this->files->onGetDirectory = fn () => [];
-        $this->service->handle($this->server, '/a/b.yml', 'x');
+        $this->service->handle($this->server, '/a/b.yml', 'x', 42);
 
         $statuses = array_map(fn ($r) => [$r[0], $r[2]['status'] ?? null], $this->log->records);
         self::assertContains(['info', 'ok'], $statuses);
         self::assertContains(['warning', 'skipped'], $statuses);
+
+        foreach ($this->log->records as $record) {
+            self::assertSame(42, $record[2]['user_id'] ?? null);
+        }
     }
 
     public function testWriteResultToArrayOmitsNullReason(): void

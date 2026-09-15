@@ -20,20 +20,20 @@ final class WriteIfExistsService
     ) {
     }
 
-    public function handle(Server $server, string $path, string $content): WriteResult
+    public function handle(Server $server, string $path, string $content, int $userId): WriteResult
     {
-        $result = $this->attempt($server, $path, $content);
+        $result = $this->attempt($server, $path, $content, $userId);
 
         $this->log->log(
             $result->status === WriteResult::OK ? 'info' : 'warning',
             'batchupdate.write',
-            ['server_uuid' => $server->uuid, 'path' => $path, 'status' => $result->status, 'reason' => $result->reason]
+            ['server_uuid' => $server->uuid, 'path' => $path, 'status' => $result->status, 'reason' => $result->reason, 'user_id' => $userId]
         );
 
         return $result;
     }
 
-    private function attempt(Server $server, string $path, string $content): WriteResult
+    private function attempt(Server $server, string $path, string $content, int $userId): WriteResult
     {
         try {
             $files = $this->files->setServer($server);
@@ -52,6 +52,7 @@ final class WriteIfExistsService
                 'server_uuid' => $server->uuid,
                 'path' => $path,
                 'exception' => $e,
+                'user_id' => $userId,
             ]);
 
             return WriteResult::error('unexpected error', 500);
@@ -75,7 +76,7 @@ final class WriteIfExistsService
 
         foreach ($entries as $entry) {
             if (($entry['name'] ?? null) === $name) {
-                return (bool) ($entry['file'] ?? false) && !($entry['directory'] ?? false);
+                return (bool) ($entry['file'] ?? false) && !($entry['directory'] ?? false) && !($entry['symlink'] ?? false);
             }
         }
 

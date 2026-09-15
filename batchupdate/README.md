@@ -15,6 +15,8 @@ select. Servers where the file does not exist are skipped and reported.
 Open any file in the editor, click **Save**, then **Batch save**, pick targets,
 click **Save to N servers**. Results show per server: saved, skipped (file not
 found), or an error with its reason.
+The panel's client API rate limit (240 requests/min per user by default) caps a single batch at roughly 240 servers; larger fleets should be done in chunks.
+Batch writes are recorded in the panel log (`batchupdate.write` entries with user id, server uuid, path and status) but do not appear in each target server's Activity tab.
 
 ## Development
 
